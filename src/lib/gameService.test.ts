@@ -6,6 +6,7 @@ import { Roller } from './roller';
 import type { PlayerDto } from '../types/dtos';
 import { EventService } from './eventService';
 import { EventRepository as InMemoryEventRepository } from './eventRepository';
+import { BotService } from './botService';
 
 const MOCK_RANDOM = 'aRandomValue';
 const MOCK_START_PLAYER = 1;
@@ -20,6 +21,8 @@ describe('GameService', () => {
 
 	let events: EventService;
 
+	let botService: BotService;
+
 	let roller: Roller;
 	let rollSpy: MockInstance;
 
@@ -27,7 +30,8 @@ describe('GameService', () => {
 		repository = new GameRepository();
 		roller = new Roller();
 		events = new EventService(new InMemoryEventRepository());
-		service = new GameService(repository, events, roller);
+		botService = new BotService();
+		service = new GameService(repository, events, roller, botService);
 		savedGame = undefined;
 
 		saveSpy = vi.spyOn(repository, 'saveGame');
