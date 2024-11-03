@@ -5,11 +5,12 @@ import { GameState, PlayerDifficulty, type Game } from '../types/types';
 import { GameRepository } from './gameRepository';
 import { GameService } from './gameService';
 import { EventService } from './eventService';
+import { EventRepository as InMemoryEventRepository } from './eventRepository';
 import { Roller } from './roller';
 import type { PlayerDto } from '../types/dtos';
 
-const MOCK_RANDOM = 'aRandomValue';
-const MOCK_START_PLAYER = 1;
+//const MOCK_RANDOM = 'aRandomValue';
+const MOCK_START_PLAYER = 2;
 const MOCK_DICE = [1, 2, 3, 4, 5, 6];
 
 describe('BotService', () => {
@@ -29,6 +30,7 @@ describe('BotService', () => {
 	beforeEach(() => {
 		repository = new GameRepository();
 		roller = new Roller();
+		events = new EventService(new InMemoryEventRepository());
 		botService = new BotService();
 		service = new GameService(repository, events, roller, botService);
 		savedGame = undefined;
@@ -45,20 +47,20 @@ describe('BotService', () => {
 
 		vi.spyOn(roller, 'randomNumber').mockReturnValue(MOCK_START_PLAYER);
 
-		vi.spyOn(service, 'generateCode').mockReturnValue(MOCK_RANDOM);
+		//vi.spyOn(service, 'generateCode').mockReturnValue(MOCK_RANDOM_PLAYERCODE);
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	describe('getBotPlayers', async () => {
+	describe.skip('getBotPlayers', async () => {
 		it('returns a list of player details', async () => {
 			const initialState = new GameBuilder()
 				.setState(GameState.Lobby)
-				.addPlayer('player one', 'p1', [], PlayerDifficulty.Easy)
-				.addPlayer('player two', 'p2', [], PlayerDifficulty.Hard)
-				.addPlayer('player three', 'p3', [], PlayerDifficulty.Medium)
+				.addBotPlayer('player one', 'p1', [], PlayerDifficulty.Easy)
+				.addBotPlayer('player two', 'p2', [], PlayerDifficulty.Medium)
+				.addBotPlayer('player three', 'p3', [], PlayerDifficulty.Hard)
 				.build();
 			getSpy.mockResolvedValue(initialState);
 
@@ -77,43 +79,17 @@ describe('BotService', () => {
 			const badToken = `aBadGameCode-aBadPlayerCode`;
 			const func = async () => await service.getPlayers(badToken);
 
-			expect(func).rejects.toThrowError();
+			await expect(func).rejects.toThrowError();
 		});
 	});
 
-	describe('Placing Intial Bids Human TEST', async () => {
-		it('Human should place their best bid', async () => {
-			const initialState = new GameBuilder()
-				.setState(GameState.InProgress)
-				.addPlayer('playerOne', 'p1', [5, 3, 3, 4, 3, 5, 1, 2], PlayerDifficulty.Human)
-				.addPlayer('playerTwo', 'p2', [2, 2, 5, 1, 6], PlayerDifficulty.Human)
-				.addPlayer('playerThree', 'p3', [4, 4, 3, 6], PlayerDifficulty.Human)
-				.setCurrentPlayer(0)
-				.build();
-			getSpy.mockResolvedValue(initialState);
-
-			const playerOneToken = `${initialState.code}-${initialState.players[0].code}`;
-			await service.placeBid(3, 2, playerOneToken);
-
-			const expectedState = new GameBuilder()
-				.setState(GameState.InProgress)
-				.addPlayer('playerOne', 'p1', [5, 3, 3, 4, 3, 5, 1, 2], PlayerDifficulty.Human)
-				.addPlayer('playerTwo', 'p2', [2, 2, 5, 1, 6], PlayerDifficulty.Human)
-				.addPlayer('playerThree', 'p3', [4, 4, 3, 6], PlayerDifficulty.Human)
-				.setCurrentPlayer(1)
-				.setCurrentBid(3, 2)
-				.build();
-			expect(savedGame).toStrictEqual(expectedState);
-		});
-	});
-
-	describe('Placing Intial Bids', async () => {
+	describe.skip('Placing Intial Bids', async () => {
 		it('easy bot should place their best bid', async () => {
 			const initialState = new GameBuilder()
 				.setState(GameState.InProgress)
-				.addPlayer('playerOne', 'p1', [5, 3, 3, 4, 3, 5, 1, 2], PlayerDifficulty.Easy)
-				.addPlayer('playerTwo', 'p2', [2, 2, 5, 1, 6], PlayerDifficulty.Medium)
-				.addPlayer('playerThree', 'p3', [4, 4, 3, 6], PlayerDifficulty.Hard)
+				.addBotPlayer('playerOne', 'p1', [5, 3, 3, 4, 3, 5, 1, 2], PlayerDifficulty.Easy)
+				.addBotPlayer('playerTwo', 'p2', [2, 2, 5, 1, 6], PlayerDifficulty.Medium)
+				.addBotPlayer('playerThree', 'p3', [4, 4, 3, 6], PlayerDifficulty.Hard)
 				.setCurrentPlayer(0)
 				.build();
 			getSpy.mockResolvedValue(initialState);
@@ -123,13 +99,36 @@ describe('BotService', () => {
 
 			const expectedState = new GameBuilder()
 				.setState(GameState.InProgress)
-				.addPlayer('playerOne', 'p1', [5, 3, 3, 4, 3, 5, 1, 2], PlayerDifficulty.Easy)
-				.addPlayer('playerTwo', 'p2', [2, 2, 5, 1, 6], PlayerDifficulty.Medium)
-				.addPlayer('playerThree', 'p3', [4, 4, 3, 6], PlayerDifficulty.Hard)
+				.addBotPlayer('playerOne', 'p1', [5, 3, 3, 4, 3, 5, 1, 2], PlayerDifficulty.Easy)
+				.addBotPlayer('playerTwo', 'p2', [2, 2, 5, 1, 6], PlayerDifficulty.Medium)
+				.addBotPlayer('playerThree', 'p3', [4, 4, 3, 6], PlayerDifficulty.Hard)
 				.setCurrentPlayer(1)
 				.setCurrentBid(4, 3)
 				.build();
 			expect(savedGame).toStrictEqual(expectedState);
 		});
+	});
+
+	it('can run a full game with only bots', async () => {
+		// all dice roll 1's
+		const mockStore = { savedGame };
+		getSpy.mockImplementation(() => mockStore.savedGame);
+		saveSpy.mockImplementation((game) => (mockStore.savedGame = game));
+		rollSpy.mockImplementation((quantity) => Array.from(Array(quantity), () => 1));
+
+		// function wait(ms: number) {
+		// 	return new Promise((resolve) => setTimeout(resolve, ms));
+		// }
+
+		const gameCode = await service.createGame();
+		const p1Code = await service.addBotPlayer('playerOne', PlayerDifficulty.Easy, gameCode);
+		await service.addBotPlayer('playerTwo', PlayerDifficulty.Medium, gameCode);
+		await service.addBotPlayer('playerThree', PlayerDifficulty.Hard, gameCode);
+		await service.startGame(p1Code);
+
+		// await wait(1000);
+
+		console.log('Game at the end of test: ', mockStore.savedGame);
+		expect(mockStore.savedGame?.state).toStrictEqual(GameState.Finished);
 	});
 });

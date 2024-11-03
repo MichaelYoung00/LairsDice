@@ -20,6 +20,18 @@ export default [
 		}
 	},
 	{
+		files: ['**/*.ts'],
+		languageOptions: {
+			parser: ts.parser,
+			parserOptions: {
+				project: ['./tsconfig.json']
+			}
+		},
+		rules: {
+			'@typescript-eslint/no-floating-promises': 'error'
+		}
+	},
+	{
 		files: ['**/*.svelte'],
 		languageOptions: {
 			parserOptions: {

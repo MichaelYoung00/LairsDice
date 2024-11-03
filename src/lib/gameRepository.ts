@@ -11,6 +11,10 @@ export class GameRepository {
 		return this.games.find((game) => game.code === code);
 	}
 
+	public async getGames(): Promise<Game[]> {
+		return this.games;
+	}
+
 	public async saveGame(game: Game): Promise<void> {
 		const index = this.games.findIndex((g) => g.code === game.code);
 		if (index !== -1) {
@@ -18,6 +22,7 @@ export class GameRepository {
 		} else {
 			this.games.push(game);
 		}
+		console.log('Games[] after saving a game (GM)', this.games);
 	}
 }
 

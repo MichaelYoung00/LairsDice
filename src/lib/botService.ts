@@ -2,10 +2,14 @@ import { PlayerDifficulty, type Bid, type Game } from '../types/types';
 import type { GameService } from './gameService';
 
 export class BotService {
-	public playBotTurn(playerToken: string, game: Game, gameService: GameService) {
+	public async playBotTurn(playerToken: string, game: Game, gameService: GameService) {
 		if (!game || !game.currentPlayer) {
 			throw new Error('game is undefined');
 		}
+
+		console.log(`${playerToken}'s Turn :`);
+		console.log(`Dice: ${game.players[game.currentPlayer].dice}`);
+		console.log(`Current Bid: ${game.currentBid}`);
 
 		const playerDice = game.players[game.currentPlayer].dice;
 
@@ -15,7 +19,7 @@ export class BotService {
 		});
 		const currentBid = game.currentBid;
 
-		const { potentialBids, potentialBidValues } = this.getPotentialBids(
+		const { potentialBids, potentialBidValues } = await this.getPotentialBids(
 			playerDice,
 			numDice,
 			currentBid
@@ -28,16 +32,16 @@ export class BotService {
 			if (!currentBid) {
 				const highestBidOdds = Math.max(...potentialBidValues);
 				const highestOddsIndex = potentialBidValues.indexOf(highestBidOdds);
-				gameService.placeBid(
+				await gameService.placeBid(
 					potentialBids[highestOddsIndex].quantity,
 					potentialBids[highestOddsIndex].dice,
 					playerToken
 				);
 			} else if (doChallengeBid) {
-				gameService.challengeBid(playerToken);
+				await gameService.challengeBid(playerToken);
 			} else {
 				const bidIndex = this.getRandomInt(0, 5);
-				gameService.placeBid(
+				await gameService.placeBid(
 					potentialBids[bidIndex].quantity,
 					potentialBids[bidIndex].dice,
 					playerToken
@@ -50,16 +54,22 @@ export class BotService {
 			const secondHighestOdds = Math.max(...fiveLowestOdds);
 			const secondHighestOddsIndex = fiveLowestOdds.indexOf(secondHighestOdds);
 
+			console.log('Highest Bid Odds:   ', highestBidOdds);
+			console.log('Highest Odds Index: ', highestOddsIndex);
+
+			console.log('Second Highest Bid Odds:   ', highestBidOdds);
+			console.log('Second Highest Odds Index: ', highestOddsIndex);
+
 			if (!currentBid) {
 				const doPlaceBestBid: boolean = Math.random() >= 0.25;
 				if (doPlaceBestBid) {
-					gameService.placeBid(
+					await gameService.placeBid(
 						potentialBids[highestOddsIndex].quantity + this.getRandomInt(0, 1),
 						potentialBids[highestOddsIndex].dice,
 						playerToken
 					);
 				} else {
-					gameService.placeBid(
+					await gameService.placeBid(
 						potentialBids[secondHighestOddsIndex].quantity + this.getRandomInt(0, 1),
 						potentialBids[secondHighestOddsIndex].dice,
 						playerToken
@@ -67,35 +77,35 @@ export class BotService {
 				}
 			} else {
 				const currentBidOdds = this.calculateBidOdds(playerDice, numDice, currentBid);
-				if (highestBidOdds > currentBidOdds) {
+				if (highestBidOdds > (await currentBidOdds)) {
 					const behaviour = this.getRandomInt(1, 10);
 					if (behaviour < 3)
-						gameService.placeBid(
+						await gameService.placeBid(
 							potentialBids[secondHighestOddsIndex].quantity,
 							potentialBids[secondHighestOddsIndex].dice,
 							playerToken
 						);
 					else if (behaviour > 3 && behaviour < 8) {
-						gameService.placeBid(
+						await gameService.placeBid(
 							potentialBids[highestOddsIndex].quantity,
 							potentialBids[highestOddsIndex].dice,
 							playerToken
 						);
 					} else {
-						gameService.challengeBid(playerToken);
+						await gameService.challengeBid(playerToken);
 					}
 				} else {
 					const behaviour = this.getRandomInt(1, 10);
 					if (behaviour < 7) {
-						gameService.challengeBid(playerToken);
+						await gameService.challengeBid(playerToken);
 					} else if (behaviour === 8) {
-						gameService.placeBid(
+						await gameService.placeBid(
 							potentialBids[secondHighestOddsIndex].quantity,
 							potentialBids[secondHighestOddsIndex].dice,
 							playerToken
 						);
 					} else {
-						gameService.placeBid(
+						await gameService.placeBid(
 							potentialBids[highestOddsIndex].quantity,
 							potentialBids[highestOddsIndex].dice,
 							playerToken
@@ -107,28 +117,28 @@ export class BotService {
 			const highestBidOdds = Math.max(...potentialBidValues);
 			if (!currentBid) {
 				const randomDice = this.getRandomInt(1, 6);
-				gameService.placeBid(
+				await gameService.placeBid(
 					this.getRandomInt(1, this.getRandomInt(1, Math.round(numDice / 6))),
 					randomDice,
 					playerToken
 				);
 			} else {
-				const currentBidOdds = this.calculateBidOdds(playerDice, numDice, currentBid);
+				const currentBidOdds = await this.calculateBidOdds(playerDice, numDice, currentBid);
 				if (highestBidOdds > currentBidOdds) {
 					const highestOddsIndex = potentialBidValues.indexOf(highestBidOdds);
-					gameService.placeBid(
+					await gameService.placeBid(
 						potentialBids[highestOddsIndex].quantity,
 						potentialBids[highestOddsIndex].dice,
 						playerToken
 					);
 				} else {
-					gameService.challengeBid(playerToken);
+					await gameService.challengeBid(playerToken);
 				}
 			}
 		}
 	}
 
-	private calculateBidOdds(playerDice: number[], numDice: number, bid: Bid): number {
+	private async calculateBidOdds(playerDice: number[], numDice: number, bid: Bid): Promise<number> {
 		const playerDiceCount = playerDice.length;
 
 		playerDice.filter((dice) => dice === 1 || dice === bid.dice);
@@ -149,11 +159,11 @@ export class BotService {
 		return odds;
 	}
 
-	private getPotentialBids(
+	private async getPotentialBids(
 		playerDice: number[],
 		numDice: number,
 		currentBid: Bid | undefined
-	): { potentialBids: Bid[]; potentialBidValues: number[] } {
+	): Promise<{ potentialBids: Bid[]; potentialBidValues: number[] }> {
 		const diceFrequency: number[] = new Array(6);
 
 		// Find the frequency of each dice value.
@@ -183,7 +193,7 @@ export class BotService {
 					};
 				}
 				potentialBids.push(potentialBid);
-				potentialBidValues.push(this.calculateBidOdds(playerDice, numDice, potentialBid));
+				potentialBidValues.push(await this.calculateBidOdds(playerDice, numDice, potentialBid));
 			}
 		} else {
 			for (let i: number = 0; i < diceFrequency.length; i++) {
@@ -192,7 +202,7 @@ export class BotService {
 					dice: i + 1
 				};
 				potentialBids.push(potentialBid);
-				potentialBidValues.push(this.calculateBidOdds(playerDice, numDice, potentialBid));
+				potentialBidValues.push(await this.calculateBidOdds(playerDice, numDice, potentialBid));
 			}
 		}
 

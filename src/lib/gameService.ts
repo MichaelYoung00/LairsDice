@@ -24,14 +24,50 @@ export class GameService {
 			initialDiceCount: 6
 		};
 
-		this.repository.saveGame(game);
-
+		await this.repository.saveGame(game);
+		console.log('Saved game at createGame: ', await this.repository.getGame(game.code));
+		const games: Game[] = await this.repository.getGames();
+		console.log('SavedGames at createGames: ', games);
 		return game.code;
 	}
 
-	public async addPlayer(
+	public async addHumanPlayer(playerName: string, gameCode: string): Promise<string> {
+		const game: Game | undefined = await this.repository.getGame(gameCode);
+
+		if (!game) {
+			throw new Error('Game is undefined');
+		}
+
+		if (game.state === GameState.InProgress) {
+			throw new Error('The game is already in progress');
+		} else if (game.state === GameState.Finished) {
+			throw new Error('The game has already finished');
+		}
+
+		const playerCode = this.generateCode();
+		const startingDice = Array.from(Array(game.initialDiceCount), () => 0);
+
+		const newPlayer: Player = {
+			name: playerName,
+			code: playerCode,
+			dice: startingDice,
+			difficulty: PlayerDifficulty.Human
+		};
+
+		if (game.players.length < game.maxPlayers) {
+			game.players.push(newPlayer);
+		} else {
+			throw new Error('max player cap check failed');
+		}
+
+		await this.repository.saveGame(game);
+
+		return `${gameCode}-${playerCode}`;
+	}
+
+	public async addBotPlayer(
 		playerName: string,
-		difficulty: PlayerDifficulty,
+		botDifficulty: PlayerDifficulty,
 		gameCode: string
 	): Promise<string> {
 		const game: Game | undefined = await this.repository.getGame(gameCode);
@@ -53,7 +89,7 @@ export class GameService {
 			name: playerName,
 			code: playerCode,
 			dice: startingDice,
-			difficulty: difficulty
+			difficulty: botDifficulty
 		};
 
 		if (game.players.length < game.maxPlayers) {
@@ -62,7 +98,7 @@ export class GameService {
 			throw new Error('max player cap check failed');
 		}
 
-		this.repository.saveGame(game);
+		await this.repository.saveGame(game);
 
 		return `${gameCode}-${playerCode}`;
 	}
@@ -80,11 +116,13 @@ export class GameService {
 
 	public async startGame(playerToken: string): Promise<void> {
 		const { gameCode, playerCode } = this.splitPlayerToken(playerToken);
+		console.log('Game Start Player Token ', playerToken);
 		const game: Game | undefined = await this.repository.getGame(gameCode);
 		if (!game) {
 			throw new Error('Game is undefined');
 		}
 
+		// Confused about this test
 		if (game.players[0].code !== playerCode) {
 			throw new Error('Player is not the host');
 		}
@@ -98,9 +136,23 @@ export class GameService {
 		this.chooseStartingPlayer(game);
 		this.updateGameState(GameState.InProgress, game);
 
-		this.events.recordRoundStart(game.players);
+		await this.events.recordRoundStart(game.players);
 
-		this.repository.saveGame(game);
+		await this.repository.saveGame(game);
+
+		if (!game.currentPlayer) {
+			throw new Error('There is no current player');
+		}
+		if (!game.players) {
+			throw new Error('There are not players');
+		}
+		console.log('Current Player at Game Start: ', game.players[game.currentPlayer]);
+		console.log('Game.Players (GS)', game.players);
+		console.log('GS line 147: ', game.players[game.currentPlayer].difficulty);
+		if (game.players[game.currentPlayer].difficulty !== PlayerDifficulty.Human) {
+			const botPlayerToken = this.getPlayerToken(game.players[game.currentPlayer]);
+			await this.botService.playBotTurn(botPlayerToken, game, gameService);
+		}
 	}
 
 	public async getGame(playerToken: string): Promise<GameDto> {
@@ -152,8 +204,12 @@ export class GameService {
 	}
 
 	public async placeBid(quantity: number, dice: number, playerToken: string): Promise<void> {
+		console.log(`${playerToken} places bid: ${quantity} ${dice}'s`);
 		const { gameCode, playerCode } = this.splitPlayerToken(playerToken);
+		console.log('PlaceBid Games: ', await this.repository.getGames());
 		const game: Game | undefined = await this.repository.getGame(gameCode);
+		console.log('placeBid Game: ', game);
+		console.log('Bid in placeBid: Game code - ', gameCode, ', Player token- ', playerToken);
 		if (!game) {
 			throw new Error('Game is undefined');
 		}
@@ -180,12 +236,17 @@ export class GameService {
 
 		game.currentBid = { quantity, dice };
 
-		this.events.recordBidEvent(game.players, game.currentBid, game.players[game.currentPlayer]);
+		await this.events.recordBidEvent(
+			game.players,
+			game.currentBid,
+			game.players[game.currentPlayer]
+		);
 
-		this.endTurn(game);
+		await this.endTurn(game);
 	}
 
 	public async challengeBid(playerToken: string): Promise<void> {
+		console.log(`${playerToken} challenges bid`);
 		const { gameCode, playerCode } = this.splitPlayerToken(playerToken);
 		const game: Game | undefined = await this.repository.getGame(gameCode);
 		if (!game) {
@@ -236,18 +297,18 @@ export class GameService {
 
 		if (remainingPlayers.length === 1) {
 			game.state = GameState.Finished;
-			this.events.recordGameEndEvent(game.players, remainingPlayers[0].name);
+			await this.events.recordGameEndEvent(game.players, remainingPlayers[0].name);
 		} else {
-			this.endTurn(game);
+			await this.endTurn(game);
 			this.rollAllDice(game);
 
-			this.events.recordRoundStart(game.players);
-			this.events.recordTurnStartEvent(game.players[game.currentPlayer].code);
+			await this.events.recordRoundStart(game.players);
+			await this.events.recordTurnStartEvent(game.players[game.currentPlayer].code);
 		}
 
 		game.currentBid = undefined;
 
-		this.repository.saveGame(game);
+		await this.repository.saveGame(game);
 	}
 
 	public generateCode() {
@@ -263,7 +324,13 @@ export class GameService {
 
 	private chooseStartingPlayer(game: Game) {
 		const numPlayers = game.players.length;
-		game.currentPlayer = this.roller.randomNumber(numPlayers);
+		const randomPlayerIndex = this.randomNumber(numPlayers);
+		console.log('Random player number: ', randomPlayerIndex);
+		game.currentPlayer = randomPlayerIndex;
+	}
+
+	private randomNumber(max: number): number {
+		return Math.floor(Math.random() * (max - 1 + 1));
 	}
 
 	private updateGameState(newState: GameState, game: Game) {
@@ -276,7 +343,7 @@ export class GameService {
 		});
 	}
 
-	private endTurn(game: Game) {
+	private async endTurn(game: Game) {
 		if (game.currentPlayer === undefined) {
 			throw new Error('No current player set');
 		}
@@ -285,17 +352,17 @@ export class GameService {
 			game.currentPlayer = (game.currentPlayer + 1) % game.players.length;
 		} while (game.players[game.currentPlayer].dice.length === 0);
 
-		this.repository.saveGame(game);
+		await this.repository.saveGame(game);
 
 		const playerToken = this.getPlayerToken(game.players[game.currentPlayer]);
 
-		this.events.recordTurnStartEvent(playerToken);
+		await this.events.recordTurnStartEvent(playerToken);
 
 		if (
 			game.players[game.currentPlayer] &&
 			game.players[game.currentPlayer].difficulty !== PlayerDifficulty.Human
 		) {
-			this.botService.playBotTurn(playerToken, game, gameService);
+			await this.botService.playBotTurn(playerToken, game, gameService);
 		}
 	}
 
