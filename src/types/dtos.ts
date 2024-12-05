@@ -9,6 +9,7 @@ export type GameDto = {
 
 export type PlayerDto = {
 	name: string;
+	isCaller: boolean;
 	dice?: number[];
 	lastBid?: Bid;
 	currentTurn?: boolean;
